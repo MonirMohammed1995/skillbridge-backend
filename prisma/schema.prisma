@@ -1,0 +1,128 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+enum Role {
+  STUDENT
+  TUTOR
+  ADMIN
+}
+
+enum BookingStatus {
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id              String          @id @default(cuid())
+  name            String
+  email           String          @unique
+  emailVerified   Boolean         @default(false)
+  image           String?
+  role            Role            @default(STUDENT)
+  isBanned        Boolean         @default(false)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  sessions        Session[]
+  accounts        Account[]
+
+  tutorProfile    TutorProfile?
+  studentBookings Booking[]       @relation("StudentBookings")
+  reviews         Review[]
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  expiresAt    DateTime
+  token        String   @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  ipAddress    String?
+  userAgent    String?
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model Verification {
+  id         String    @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+}
+
+model TutorProfile {
+  id            String       @id @default(cuid())
+  userId        String       @unique
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio           String?
+  hourlyRate    Float
+  experience    String?
+  categoryId    String
+  category      Category     @relation(fields: [categoryId], references: [id])
+  availability  Json?
+  bookings      Booking[]    @relation("TutorBookings")
+  reviews       Review[]     @relation("TutorReviews")
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+model Category {
+  id            String         @id @default(cuid())
+  name          String         @unique
+  description   String?
+  tutors        TutorProfile[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Booking {
+  id            String         @id @default(cuid())
+  studentId     String
+  student       User           @relation("StudentBookings", fields: [studentId], references: [id])
+  tutorId       String
+  tutor         TutorProfile   @relation("TutorBookings", fields: [tutorId], references: [id])
+  date          DateTime
+  startTime     String
+  endTime       String
+  status        BookingStatus  @default(CONFIRMED)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Review {
+  id            String         @id @default(cuid())
+  rating        Int
+  comment       String?
+  studentId     String
+  student       User           @relation(fields: [studentId], references: [id])
+  tutorId       String
+  tutor         TutorProfile   @relation("TutorReviews", fields: [tutorId], references: [id])
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
