@@ -1,84 +1,140 @@
 import { Request, Response } from "express";
-import { prisma } from "../util/prisma";
+import { PrismaClient } from "../generated/prisma";
+import { PrismaPg } from "@prisma/adapter-pg";
 
-export const getTutors = async (req: Request, res: Response) => {
-  try {
-    const { categoryId, search, minPrice, maxPrice } = req.query;
+const connectionString = `${process.env.DATABASE_URL}`;
+const adapter = new PrismaPg({ connectionString });
+const prisma = new PrismaClient({ adapter });
 
-    const filters: any = {};
-    if (categoryId) filters.categoryId = categoryId as string;
-    if (minPrice || maxPrice) {
-      filters.hourlyRate = {};
-      if (minPrice) filters.hourlyRate.gte = parseFloat(minPrice as string);
-      if (maxPrice) filters.hourlyRate.lte = parseFloat(maxPrice as string);
+/**
+ * Helper: ট্যুটর প্রোফাইল না থাকলে স্বয়ংক্রিয়ভাবে তৈরি (Auto-create) করে নেবে
+ */
+const getOrCreateTutorProfile = async (userId: string) => {
+  let profile = await prisma.tutorProfile.findUnique({
+    where: { userId },
+    include: { category: true },
+  });
+
+  if (!profile) {
+    // সিড ডাটা থেকে প্রথম ক্যাটাগরি ডিফল্ট হিসেবে নিয়ে নেওয়া
+    const defaultCategory = await prisma.category.findFirst();
+    
+    if (!defaultCategory) {
+      throw new Error("No category found in database. Please run database seeding.");
     }
-    if (search) {
-      filters.OR = [
-        { bio: { contains: search as string, mode: "insensitive" } },
-        { user: { name: { contains: search as string, mode: "insensitive" } } },
-      ];
-    }
 
-    const tutors = await prisma.tutorProfile.findMany({
-      where: filters,
-      include: {
-        user: { select: { name: true, email: true, image: true } },
-        category: true,
-        reviews: true,
+    profile = await prisma.tutorProfile.create({
+      data: {
+        userId,
+        hourlyRate: 50,
+        categoryId: defaultCategory.id,
+        availability: [],
+        bio: "Professional educator dedicated to helping students achieve their learning goals.",
       },
+      include: { category: true },
     });
+  }
 
-    res.status(200).json({ success: true, data: tutors });
+  return profile;
+};
+
+// ১. ট্যুটর প্রোফাইল ফেচ করা (অটো-ক্রিয়েট সহ)
+export const getTutorProfile = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    const profile = await getOrCreateTutorProfile(userId);
+
+    return res.status(200).json(profile);
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error("Error fetching tutor profile:", error);
+    return res.status(500).json({ message: error.message || "Internal server error" });
   }
 };
 
-export const getTutorById = async (req: Request, res: Response) => {
-  try {
-    const id = req.params.id as string; // এভাবে type assertion করে নিতে হবে
-    const tutor = await prisma.tutorProfile.findUnique({
-      where: { id },
-      include: {
-        user: { select: { name: true, email: true, image: true } },
-        category: true,
-        reviews: { include: { student: { select: { name: true, image: true } } } },
-      },
-    });
-
-    if (!tutor) {
-      res.status(404).json({ success: false, error: "Tutor not found" });
-      return;
-    }
-
-    res.status(200).json({ success: true, data: tutor });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
+// ২. ট্যুটর প্রোফাইল এবং বায়ো আপডেট করা
 export const updateTutorProfile = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const { bio, hourlyRate, experience, categoryId, availability } = req.body;
+    const { bio, hourlyRate, experience, categoryId } = req.body;
 
-    const updatedProfile = await prisma.tutorProfile.upsert({
+    // প্রথমে নিশ্চিত করা যে প্রোফাইল এক্সিস্ট করে
+    await getOrCreateTutorProfile(userId);
+
+    const updatedProfile = await prisma.tutorProfile.update({
       where: { userId },
-      update: { bio, hourlyRate, experience, categoryId, availability },
-      create: { userId, bio, hourlyRate, experience, categoryId, availability },
+      data: {
+        ...(bio !== undefined && { bio }),
+        ...(hourlyRate !== undefined && { hourlyRate: Number(hourlyRate) }),
+        ...(experience !== undefined && { experience }),
+        ...(categoryId !== undefined && { categoryId }),
+      },
     });
 
-    res.status(200).json({ success: true, data: updatedProfile });
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully!",
+      profile: updatedProfile,
+    });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error("Error updating tutor profile:", error);
+    return res.status(500).json({ message: error.message || "Internal server error" });
   }
 };
 
-export const getCategories = async (req: Request, res: Response) => {
+// ৩. অ্যাভেইল্যাবিলিটি টাইম স্লট যোগ করা
+export const addTutorAvailability = async (req: Request, res: Response) => {
   try {
-    const categories = await prisma.category.findMany();
-    res.status(200).json({ success: true, data: categories });
+    const userId = (req as any).user.id;
+    const { timeSlot } = req.body;
+
+    if (!timeSlot) {
+      return res.status(400).json({ message: "Time slot is required" });
+    }
+
+    // প্রোফাইল না থাকলে অটো-ক্রিয়েট হবে
+    const tutorProfile = await getOrCreateTutorProfile(userId);
+
+    const currentAvailability = (tutorProfile.availability as string[]) || [];
+    const updatedAvailability = [...currentAvailability, timeSlot];
+
+    const updatedProfile = await prisma.tutorProfile.update({
+      where: { id: tutorProfile.id },
+      data: {
+        availability: updatedAvailability,
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Availability slot added successfully!",
+      availability: updatedProfile.availability,
+    });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error("Error adding availability:", error);
+    return res.status(500).json({ message: error.message || "Internal server error" });
+  }
+};
+
+// ৪. ট্যুটরের ছাত্র বুকিং বা সেশনগুলো ফেচ করা
+export const getTutorSessions = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    const tutorProfile = await getOrCreateTutorProfile(userId);
+
+    // Booking টেবিল থেকে এই tutorProfile.id এর আন্ডারে থাকা বুকিংগুলো আনা
+    const sessions = await prisma.booking.findMany({
+      where: { tutorId: tutorProfile.id },
+      include: {
+        student: {
+          select: { id: true, name: true, email: true, image: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return res.status(200).json({ sessions });
+  } catch (error: any) {
+    console.error("Error fetching tutor sessions:", error);
+    return res.status(500).json({ message: error.message || "Internal server error" });
   }
 };

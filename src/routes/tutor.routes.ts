@@ -1,12 +1,17 @@
 import { Router } from "express";
-import { getTutors, getTutorById, getCategories, updateTutorProfile } from "../controllers/tutor.controller";
+import { 
+  getTutorProfile, 
+  updateTutorProfile, 
+  addTutorAvailability, 
+  getTutorSessions 
+} from "../controllers/tutor.controller";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware";
 
-const router:Router = Router();
+const router: Router = Router();
 
-router.get("/", getTutors);
-router.get("/categories", getCategories);
-router.get("/:id", getTutorById);
-router.put("/profile", requireAuth, requireRole(["TUTOR"]), updateTutorProfile);
+router.get("/profile", requireAuth, requireRole(["TUTOR"]), getTutorProfile);
+router.patch("/profile", requireAuth, requireRole(["TUTOR"]), updateTutorProfile);
+router.post("/availability", requireAuth, requireRole(["TUTOR"]), addTutorAvailability);
+router.get("/sessions", requireAuth, requireRole(["TUTOR"]), getTutorSessions);
 
 export default router;
