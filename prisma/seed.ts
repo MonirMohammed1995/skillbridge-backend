@@ -1,62 +1,49 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma";
-import * as bcrypt from "bcrypt";
 
 const connectionString = `${process.env.DATABASE_URL}`;
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  console.log("Seeding database...");
+  console.log("Seeding database categories...");
 
+  // ১. প্রাথমিক সাবজেক্ট ক্যাটাগরিগুলো সিড করা
   const category1 = await prisma.category.upsert({
     where: { name: "Mathematics" },
     update: {},
-    create: { name: "Mathematics", description: "Algebra, Calculus, and Geometry tutoring." },
+    create: { 
+      name: "Mathematics", 
+      description: "Algebra, Calculus, and Geometry tutoring." 
+    },
   });
 
   const category2 = await prisma.category.upsert({
     where: { name: "Programming" },
     update: {},
-    create: { name: "Programming", description: "Full-stack development, TypeScript, and Python." },
+    create: { 
+      name: "Programming", 
+      description: "Full-stack development, TypeScript, and Python." 
+    },
   });
 
-  const adminEmail = "admin@skillbridge.com";
-  const existingAdmin = await prisma.user.findUnique({
-    where: { email: adminEmail },
+  const category3 = await prisma.category.upsert({
+    where: { name: "Physics" },
+    update: {},
+    create: { 
+      name: "Physics", 
+      description: "Mechanics, Thermodynamics, and Electromagnetism." 
+    },
   });
 
-  if (!existingAdmin) {
-    const hashedPassword = await bcrypt.hash("Admin12345", 10);
-
-    const adminUser = await prisma.user.create({
-      data: {
-        name: "Platform Admin",
-        email: adminEmail,
-        emailVerified: true,
-        role: "ADMIN",
-        accounts: {
-          create: {
-            providerId: "credential",
-            accountId: adminEmail,
-            password: hashedPassword,
-          },
-        },
-      },
-    });
-    console.log("Admin user created:", adminUser.email);
-  } else {
-    console.log("Admin user already exists.");
-  }
-
-  console.log({ category1, category2 });
-  console.log("Seeding finished successfully.");
+  console.log("Seeded categories successfully:", { category1, category2, category3 });
+  console.log("Database seeding finished successfully.");
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    console.error("Error during database seeding:", e);
     process.exit(1);
   })
   .finally(async () => {

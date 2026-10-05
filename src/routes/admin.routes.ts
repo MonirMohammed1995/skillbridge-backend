@@ -1,10 +1,13 @@
 import { Router } from "express";
-import { getAllUsers, updateUserStatus } from "../controllers/user.controller";
+import { getUserBookings, createBooking, cancelBooking } from "../controllers/booking.controller";
 import { requireAuth, requireRole } from "../middlewares/auth.middleware";
 
-const router:Router = Router();
+const router: Router = Router();
 
-router.get("/users", requireAuth, requireRole(["ADMIN"]), getAllUsers);
-router.patch("/users/:id", requireAuth, requireRole(["ADMIN"]), updateUserStatus);
+router.use(requireAuth);
+
+router.get("/", requireRole(["STUDENT", "TUTOR", "ADMIN"]), getUserBookings);
+router.post("/", requireRole(["STUDENT"]), createBooking);
+router.patch("/:id/cancel", requireRole(["STUDENT"]), cancelBooking);
 
 export default router;

@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { 
+  getAllTutors,
+  getTutorById,
   getTutorProfile, 
   updateTutorProfile, 
   addTutorAvailability, 
@@ -9,6 +11,11 @@ import { requireAuth, requireRole } from "../middlewares/auth.middleware";
 
 const router: Router = Router();
 
+// পাবলিক রুটসমূহ
+router.get("/", getAllTutors);
+router.get("/:id", getTutorById);
+
+// প্রোটেক্টড ট্যুটর রুটসমূহ
 router.get("/profile", requireAuth, requireRole(["TUTOR"]), getTutorProfile);
 router.patch("/profile", requireAuth, requireRole(["TUTOR"]), updateTutorProfile);
 router.post("/availability", requireAuth, requireRole(["TUTOR"]), addTutorAvailability);
